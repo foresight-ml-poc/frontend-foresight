@@ -1,266 +1,167 @@
 import { useEffect, useState } from "react";
-import { getModelInfo, predict, type ModelInfo, type Prediction, type SignalInput } from "./api";
-
-const DEFAULT_SIGNAL: SignalInput = {
-  direction: "BUY_YES",
-  market_price_at_signal: 0.42,
-  impact_strength: 0.75,
-  llm_confidence: 0.82,
-  ambiguity_score: 0.18,
-  specificity_score: 0.7,
-  cosine_score: 0.65,
-  tier_1_count: 2,
-  tier_2_count: 1,
-  tier_3_count: 0,
-  bucket: "geopolitics",
-  articles_count: 4,
-  unique_sources_count: 3,
-  hour_of_day: 14,
-};
-
-const BUCKETS = ["geopolitics", "politics", "sports", "crypto", "economics", "science", "other"] as const;
+import { getModelInfo, type ModelInfo } from "./api";
+import { ModelComparison } from "./components/ModelComparison";
+import { Playground } from "./components/Playground";
 
 export default function App() {
   const [info, setInfo] = useState<ModelInfo | null>(null);
-  const [signal, setSignal] = useState<SignalInput>(DEFAULT_SIGNAL);
-  const [pred, setPred] = useState<Prediction | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    getModelInfo()
-      .then(setInfo)
-      .catch((e) => setError(String(e)));
+    getModelInfo().then(setInfo).catch((e) => setErr(String(e)));
   }, []);
 
-  const update = <K extends keyof SignalInput>(k: K, v: SignalInput[K]) =>
-    setSignal((s) => ({ ...s, [k]: v }));
-
-  const onSubmit = async () => {
-    setLoading(true);
-    setError(null);
-    setPred(null);
-    try {
-      setPred(await predict(signal));
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-4xl px-6 py-5">
-          <h1 className="text-2xl font-semibold">Foresight ML — démo</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Prédit si un signal Polymarket va être correct à T+24h.
-            Modèle entraîné dans{" "}
-            <a
-              href="https://github.com/foresight-ml-poc/ml-foresight"
-              className="underline hover:text-slate-900"
-            >
-              ml-foresight
-            </a>
-            .
-          </p>
-        </div>
-      </header>
+    <div className="min-h-screen bg-obsidian-950">
+      <Header info={info} />
 
-      <main className="mx-auto max-w-4xl px-6 py-8">
-        <ModelCard info={info} error={error} />
+      <main className="mx-auto max-w-5xl px-5 pb-24">
+        <Hero info={info} />
 
-        <section className="mt-8 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold">Tester /predict</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Ajuste les valeurs puis clique « Prédire ».
-          </p>
-
-          <div className="mt-6 grid grid-cols-1 gap-x-6 gap-y-4 md:grid-cols-2">
-            <Select
-              label="direction"
-              value={signal.direction}
-              options={["BUY_YES", "BUY_NO"]}
-              onChange={(v) => update("direction", v as "BUY_YES" | "BUY_NO")}
-            />
-            <Select
-              label="bucket"
-              value={signal.bucket}
-              options={[...BUCKETS]}
-              onChange={(v) => update("bucket", v as SignalInput["bucket"])}
-            />
-            <Slider label="market_price_at_signal" value={signal.market_price_at_signal}
-              onChange={(v) => update("market_price_at_signal", v)} />
-            <Slider label="cosine_score" value={signal.cosine_score}
-              onChange={(v) => update("cosine_score", v)} />
-            <Slider label="impact_strength" value={signal.impact_strength}
-              onChange={(v) => update("impact_strength", v)} />
-            <Slider label="llm_confidence" value={signal.llm_confidence}
-              onChange={(v) => update("llm_confidence", v)} />
-            <Slider label="ambiguity_score" value={signal.ambiguity_score}
-              onChange={(v) => update("ambiguity_score", v)} />
-            <Slider label="specificity_score" value={signal.specificity_score}
-              onChange={(v) => update("specificity_score", v)} />
-            <NumberInput label="tier_1_count" value={signal.tier_1_count} min={0} max={20}
-              onChange={(v) => update("tier_1_count", v)} />
-            <NumberInput label="tier_2_count" value={signal.tier_2_count} min={0} max={20}
-              onChange={(v) => update("tier_2_count", v)} />
-            <NumberInput label="tier_3_count" value={signal.tier_3_count} min={0} max={20}
-              onChange={(v) => update("tier_3_count", v)} />
-            <NumberInput label="articles_count" value={signal.articles_count} min={1} max={50}
-              onChange={(v) => update("articles_count", v)} />
-            <NumberInput label="unique_sources_count" value={signal.unique_sources_count} min={1} max={50}
-              onChange={(v) => update("unique_sources_count", v)} />
-            <NumberInput label="hour_of_day" value={signal.hour_of_day} min={0} max={23}
-              onChange={(v) => update("hour_of_day", v)} />
+        {err && !info && (
+          <div className="mt-8 rounded-xl border border-loss/30 bg-loss/10 p-5 text-sm text-loss">
+            Impossible de joindre le backend (
+            <code className="font-mono">
+              {import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000"}
+            </code>
+            ). Lance-le avec <code className="font-mono">uvicorn app.main:app --port 8000</code>.
+            <div className="mt-1 text-loss/70">{err}</div>
           </div>
+        )}
 
-          <div className="mt-6 flex items-center gap-4">
-            <button
-              onClick={onSubmit}
-              disabled={loading}
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-50"
-            >
-              {loading ? "Calcul…" : "Prédire"}
-            </button>
-
-            {pred && <PredictionResult pred={pred} />}
-            {error && <span className="text-sm text-red-600">{error}</span>}
+        {info && (
+          <div className="mt-12 space-y-12">
+            <ModelComparison info={info} />
+            <Playground info={info} />
+            <DatasetSection info={info} />
           </div>
-        </section>
+        )}
+
+        {!info && !err && (
+          <div className="mt-16 text-center text-ink-dim">Chargement du modèle…</div>
+        )}
       </main>
+
+      <Footer />
     </div>
   );
 }
 
-function ModelCard({ info, error }: { info: ModelInfo | null; error: string | null }) {
-  if (error && !info) {
-    return (
-      <section className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        Erreur en chargeant le modèle : {error}. Le backend est-il bien lancé sur{" "}
-        <code className="rounded bg-red-100 px-1">{import.meta.env.VITE_BACKEND_URL ?? "http://localhost:8000"}</code> ?
-      </section>
-    );
-  }
-  if (!info) {
-    return <section className="text-sm text-slate-500">Chargement du modèle…</section>;
-  }
-
-  const best = info.test_metrics?.[info.best_model_type];
+function Header({ info }: { info: ModelInfo | null }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold">Modèle chargé</h2>
-      <dl className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-        <Stat label="Type" value={info.best_model_type} />
-        <Stat label="Version" value={info.model_version} />
-        <Stat
-          label="Dataset"
-          value={
-            info.dataset_size
-              ? `${info.dataset_size.total} (train ${info.dataset_size.train} / test ${info.dataset_size.test})`
-              : "—"
-          }
-        />
-        <Stat label="Test ROC-AUC" value={best ? best.roc_auc.toFixed(3) : "—"} />
-      </dl>
-      {info.heuristic_baseline && best && (
-        <p className="mt-4 text-sm text-slate-600">
-          Vs heuristique Foresight (ROC-AUC {info.heuristic_baseline.roc_auc.toFixed(3)}) :{" "}
-          <span className="font-semibold">
-            {(best.roc_auc - info.heuristic_baseline.roc_auc >= 0 ? "+" : "") +
-              ((best.roc_auc - info.heuristic_baseline.roc_auc) * 100).toFixed(1)} pts
-          </span>
-        </p>
+    <header className="sticky top-0 z-10 border-b border-obsidian-800 bg-obsidian-950/80 backdrop-blur">
+      <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
+        <div className="flex items-center gap-2.5">
+          <div className="grid h-7 w-7 place-items-center rounded-md bg-mint/15">
+            <span className="text-mint">◆</span>
+          </div>
+          <span className="font-semibold tracking-tight">Foresight ML</span>
+          {info && (
+            <span className="ml-2 rounded-full border border-obsidian-700 px-2 py-0.5 font-mono text-xs text-ink-muted">
+              {info.model_version}
+            </span>
+          )}
+        </div>
+        <a
+          href="https://github.com/foresight-ml-poc"
+          className="text-sm text-ink-muted transition hover:text-ink"
+        >
+          GitHub ↗
+        </a>
+      </div>
+    </header>
+  );
+}
+
+function Hero({ info }: { info: ModelInfo | null }) {
+  return (
+    <section className="pt-16">
+      <p className="font-mono text-sm text-mint">POC machine learning · Albert School</p>
+      <h1 className="mt-3 max-w-3xl text-4xl font-bold leading-tight tracking-tight md:text-5xl">
+        Peut-on battre une heuristique de trading avec du machine learning ?
+      </h1>
+      <p className="mt-5 max-w-2xl text-lg leading-relaxed text-ink-muted">
+        Foresight émet des signaux sur Polymarket notés par une formule fixe
+        (winrate 46–48 % à T+24h). On entraîne 6 modèles pour prédire si un
+        signal sera correct — et on compare honnêtement à l'heuristique.
+      </p>
+      {info?.dataset_size && (
+        <div className="mt-8 flex flex-wrap gap-3">
+          <Pill label="Signaux" value={String(info.dataset_size.total)} />
+          <Pill label="Train" value={String(info.dataset_size.train)} />
+          <Pill label="Test" value={String(info.dataset_size.test)} />
+          <Pill label="Best model" value={info.best_model_type} accent />
+        </div>
       )}
     </section>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Pill({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-0.5 text-base font-medium">{value}</dd>
-    </div>
-  );
-}
-
-function PredictionResult({ pred }: { pred: Prediction }) {
-  const win = pred.predicted_label === 1;
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      <span className={`rounded-md px-2 py-1 font-semibold ${win ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
-        {win ? "🟢 GAIN" : "🔴 LOSS"}
-      </span>
-      <span className="text-slate-600">
-        proba = <span className="font-mono">{pred.probability_winning.toFixed(3)}</span> ·
-        modèle = {pred.model_type} {pred.model_version}
-      </span>
-    </div>
-  );
-}
-
-function Slider({
-  label, value, onChange, min = 0, max = 1, step = 0.01,
-}: {
-  label: string; value: number; onChange: (v: number) => void;
-  min?: number; max?: number; step?: number;
-}) {
-  return (
-    <label className="block">
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-mono text-slate-700">{label}</span>
-        <span className="font-mono text-slate-500">{value.toFixed(2)}</span>
+    <div className="rounded-xl border border-obsidian-700 bg-obsidian-900 px-4 py-2.5">
+      <div className="text-xs uppercase tracking-wider text-ink-dim">{label}</div>
+      <div className={`mt-0.5 font-mono text-sm ${accent ? "text-mint" : "text-ink"}`}>
+        {value}
       </div>
-      <input
-        type="range"
-        min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="mt-1 w-full"
-      />
-    </label>
+    </div>
   );
 }
 
-function NumberInput({
-  label, value, onChange, min, max,
-}: {
-  label: string; value: number; onChange: (v: number) => void; min: number; max: number;
-}) {
+function DatasetSection({ info }: { info: ModelInfo }) {
+  const m = info.test_metrics[info.best_model_type];
+  const h = info.heuristic_baseline;
+  const cells = [
+    ["Best model", info.best_model_type],
+    ["Version", info.model_version],
+    ["Entraîné le", new Date(info.trained_at).toLocaleString("fr-FR")],
+    ["Features", String(info.feature_order.length)],
+    ["Best ROC-AUC", m.roc_auc.toFixed(3)],
+    ["Heuristique ROC-AUC", h.roc_auc.toFixed(3)],
+    ["Best F1", m.f1.toFixed(3)],
+    ["Best precision", m.precision.toFixed(3)],
+  ];
   return (
-    <label className="block">
-      <span className="block text-sm font-mono text-slate-700">{label}</span>
-      <input
-        type="number"
-        min={min} max={max}
-        value={value}
-        onChange={(e) => onChange(parseInt(e.target.value || "0", 10))}
-        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-      />
-    </label>
-  );
-}
-
-function Select<T extends string>({
-  label, value, options, onChange,
-}: {
-  label: string; value: T; options: T[]; onChange: (v: T) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="block text-sm font-mono text-slate-700">{label}</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"
-      >
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
+    <div className="rounded-2xl border border-obsidian-700 bg-obsidian-900 p-6 md:p-8">
+      <h2 className="text-xl font-semibold">Model card</h2>
+      <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-obsidian-700 bg-obsidian-700 sm:grid-cols-4">
+        {cells.map(([k, v]) => (
+          <div key={k} className="bg-obsidian-900 p-4">
+            <div className="text-xs uppercase tracking-wider text-ink-dim">{k}</div>
+            <div className="mt-1 break-words font-mono text-sm text-ink">{v}</div>
+          </div>
         ))}
-      </select>
-    </label>
+      </div>
+      {info.notes && (
+        <p className="mt-4 text-sm leading-relaxed text-ink-dim">{info.notes}</p>
+      )}
+    </div>
+  );
+}
+
+function Footer() {
+  const repos = [
+    ["ml-foresight", "pipeline ML"],
+    ["backend-foresight", "API FastAPI"],
+    ["frontend-foresight", "cette démo"],
+  ];
+  return (
+    <footer className="border-t border-obsidian-800">
+      <div className="mx-auto flex max-w-5xl flex-col gap-4 px-5 py-8 text-sm text-ink-muted sm:flex-row sm:items-center sm:justify-between">
+        <span>Vadim Capton · Albert School · 2026</span>
+        <div className="flex flex-wrap gap-4">
+          {repos.map(([r, d]) => (
+            <a
+              key={r}
+              href={`https://github.com/foresight-ml-poc/${r}`}
+              className="transition hover:text-mint"
+            >
+              <span className="font-mono">{r}</span>{" "}
+              <span className="text-ink-dim">— {d}</span>
+            </a>
+          ))}
+        </div>
+      </div>
+    </footer>
   );
 }
